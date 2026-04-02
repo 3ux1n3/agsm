@@ -1,0 +1,10 @@
+sort_by = "last_active"
+sort_order = "desc"
+
+[agents.opencode]
+enabled = true
+# session_path = "/Users/you/.local/share/opencode/storage/session"
+
+[ui]
+nerd_fonts = false
+color_scheme = "auto"

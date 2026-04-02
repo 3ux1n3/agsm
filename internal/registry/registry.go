@@ -1,0 +1,124 @@
+package registry
+
+import (
+	"sort"
+	"strings"
+
+	"github.com/sahilm/fuzzy"
+
+	"github.com/3ux1n3/agsm/internal/adapter"
+	"github.com/3ux1n3/agsm/internal/metadata"
+	"github.com/3ux1n3/agsm/internal/session"
+)
+
+type Registry struct {
+	adapters  []adapter.AgentAdapter
+	metadata  *metadata.Store
+	sortBy    string
+	sortOrder string
+	items     []session.Session
+}
+
+func New(adapters []adapter.AgentAdapter, metadata *metadata.Store, sortBy, sortOrder string) *Registry {
+	return &Registry{
+		adapters:  adapters,
+		metadata:  metadata,
+		sortBy:    sortBy,
+		sortOrder: sortOrder,
+	}
+}
+
+func (r *Registry) Refresh() ([]session.Session, error) {
+	all := []session.Session{}
+	for _, adapter := range r.adapters {
+		items, err := adapter.Discover()
+		if err != nil {
+			return nil, err
+		}
+		for i := range items {
+			items[i].CustomName = r.metadata.GetCustomName(items[i].MetadataKey())
+		}
+		all = append(all, items...)
+	}
+
+	r.sort(all)
+	r.items = all
+	return r.items, nil
+}
+
+func (r *Registry) Items() []session.Session {
+	items := make([]session.Session, len(r.items))
+	copy(items, r.items)
+	return items
+}
+
+func (r *Registry) Rename(s session.Session, name string) error {
+	if err := r.metadata.SetCustomName(s.MetadataKey(), strings.TrimSpace(name)); err != nil {
+		return err
+	}
+	for i := range r.items {
+		if r.items[i].MetadataKey() == s.MetadataKey() {
+			r.items[i].CustomName = strings.TrimSpace(name)
+		}
+	}
+	return nil
+}
+
+func (r *Registry) Delete(s session.Session) error {
+	for _, adapter := range r.adapters {
+		if adapter.Name() == s.Agent {
+			if err := adapter.DeleteSession(s); err != nil {
+				return err
+			}
+			break
+		}
+	}
+	_, err := r.Refresh()
+	return err
+}
+
+func (r *Registry) AdapterFor(agent string) adapter.AgentAdapter {
+	for _, adapter := range r.adapters {
+		if adapter.Name() == agent {
+			return adapter
+		}
+	}
+	return nil
+}
+
+func (r *Registry) Filter(query string) []session.Session {
+	if strings.TrimSpace(query) == "" {
+		return r.Items()
+	}
+
+	targets := make([]string, 0, len(r.items))
+	for _, item := range r.items {
+		targets = append(targets, strings.Join([]string{item.DisplayName(), item.ProjectDir, item.Agent}, " | "))
+	}
+
+	matches := fuzzy.Find(strings.TrimSpace(query), targets)
+	filtered := make([]session.Session, 0, len(matches))
+	for _, match := range matches {
+		filtered = append(filtered, r.items[match.Index])
+	}
+	return filtered
+}
+
+func (r *Registry) sort(items []session.Session) {
+	desc := strings.ToLower(r.sortOrder) != "asc"
+	sort.Slice(items, func(i, j int) bool {
+		var less bool
+		switch r.sortBy {
+		case "name":
+			less = strings.ToLower(items[i].DisplayName()) < strings.ToLower(items[j].DisplayName())
+		case "agent":
+			less = items[i].Agent < items[j].Agent
+		default:
+			less = items[i].LastActive.Before(items[j].LastActive)
+		}
+		if desc {
+			return !less
+		}
+		return less
+	})
+}
