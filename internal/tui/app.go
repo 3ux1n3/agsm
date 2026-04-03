@@ -279,6 +279,7 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case key.Matches(keyMsg, a.keys.Enter):
 			dir := strings.TrimSpace(a.dirInput.Value())
+			prompt := strings.TrimSpace(a.nameInput.Value())
 			if dir == "" {
 				a.err = fmt.Errorf("directory is required")
 				return a, nil
@@ -294,17 +295,22 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 
-			adapter := a.registry.AdapterFor("opencode")
+			adapter := a.registry.DefaultAdapter()
+			if current, ok := a.current(); ok {
+				if currentAdapter := a.registry.AdapterFor(current.Agent); currentAdapter != nil {
+					adapter = currentAdapter
+				}
+			}
 			if adapter == nil {
-				a.err = fmt.Errorf("opencode adapter is not configured")
+				a.err = fmt.Errorf("no agent adapter is configured")
 				return a, nil
 			}
 
-			cmd := adapter.NewCommand(resolved)
-			if sessionName := strings.TrimSpace(a.nameInput.Value()); sessionName != "" {
-				a.status = "Launching new OpenCode session: " + sessionName
+			cmd := adapter.NewCommand(resolved, prompt)
+			if prompt != "" {
+				a.status = "Launching new " + strings.Title(adapter.Name()) + " session with prompt"
 			} else {
-				a.status = "Launching new OpenCode session"
+				a.status = "Launching new " + strings.Title(adapter.Name()) + " session"
 			}
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout

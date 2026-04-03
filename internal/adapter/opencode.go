@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,15 +19,26 @@ import (
 type OpenCodeAdapter struct {
 	sessionPath string
 	projectPath string
+	initErr     error
 }
 
 func NewOpenCodeAdapter(sessionPath string) *OpenCodeAdapter {
-	if sessionPath == "" {
-		home, _ := os.UserHomeDir()
-		sessionPath = filepath.Join(home, ".local", "share", "opencode", "storage", "session")
-		return &OpenCodeAdapter{sessionPath: sessionPath, projectPath: filepath.Join(home, ".local", "share", "opencode", "storage", "project")}
+	if sessionPath != "" {
+		return &OpenCodeAdapter{sessionPath: sessionPath, projectPath: filepath.Join(filepath.Dir(sessionPath), "project")}
 	}
-	return &OpenCodeAdapter{sessionPath: sessionPath, projectPath: filepath.Join(filepath.Dir(sessionPath), "project")}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return &OpenCodeAdapter{initErr: fmt.Errorf("resolve home directory: %w", err)}
+	}
+	if home == "" {
+		return &OpenCodeAdapter{initErr: fmt.Errorf("resolve home directory: empty path")}
+	}
+
+	return &OpenCodeAdapter{
+		sessionPath: filepath.Join(home, ".local", "share", "opencode", "storage", "session"),
+		projectPath: filepath.Join(home, ".local", "share", "opencode", "storage", "project"),
+	}
 }
 
 func (a *OpenCodeAdapter) Name() string {
@@ -34,6 +46,10 @@ func (a *OpenCodeAdapter) Name() string {
 }
 
 func (a *OpenCodeAdapter) Discover() ([]session.Session, error) {
+	if a.initErr != nil {
+		return nil, a.initErr
+	}
+
 	items := []session.Session{}
 	seen := map[string]struct{}{}
 	projectDirs, _ := a.loadProjectDirs()
@@ -43,6 +59,8 @@ func (a *OpenCodeAdapter) Discover() ([]session.Session, error) {
 			items = append(items, item)
 			seen[item.ID] = struct{}{}
 		}
+	} else if a.IsInstalled() {
+		log.Printf("opencode DB discovery failed, falling back to session files: %v", err)
 	}
 	err = filepath.WalkDir(a.sessionPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -137,18 +155,23 @@ func (a *OpenCodeAdapter) ResumeCommand(s session.Session) *exec.Cmd {
 	return cmd
 }
 
-func (a *OpenCodeAdapter) NewCommand(dir string) *exec.Cmd {
-	cmd := exec.Command("opencode")
+func (a *OpenCodeAdapter) NewCommand(dir, prompt string) *exec.Cmd {
+	args := []string{}
+	if prompt = strings.TrimSpace(prompt); prompt != "" {
+		args = append(args, "--prompt", prompt)
+	}
+	cmd := exec.Command("opencode", args...)
 	cmd.Dir = dir
 	return cmd
 }
 
 func (a *OpenCodeAdapter) DeleteSession(s session.Session) error {
 	if s.FilePath != "" {
-		if err := os.Remove(s.FilePath); err == nil || os.IsNotExist(err) == false {
-			if err == nil {
-				return nil
-			}
+		err := os.Remove(s.FilePath)
+		if err == nil {
+			return nil
+		}
+		if !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -248,6 +271,14 @@ func (a *OpenCodeAdapter) loadProjectDirs() (map[string]string, error) {
 }
 
 func firstString(v any, keys ...string) string {
+	return firstStringDepth(v, 2, keys...)
+}
+
+func firstStringDepth(v any, depth int, keys ...string) string {
+	if depth < 0 {
+		return ""
+	}
+
 	switch value := v.(type) {
 	case map[string]any:
 		for _, key := range keys {
@@ -257,14 +288,20 @@ func firstString(v any, keys ...string) string {
 				}
 			}
 		}
+		if depth == 0 {
+			return ""
+		}
 		for _, child := range value {
-			if s := firstString(child, keys...); s != "" {
+			if s := firstStringDepth(child, depth-1, keys...); s != "" {
 				return s
 			}
 		}
 	case []any:
+		if depth == 0 {
+			return ""
+		}
 		for _, child := range value {
-			if s := firstString(child, keys...); s != "" {
+			if s := firstStringDepth(child, depth-1, keys...); s != "" {
 				return s
 			}
 		}
@@ -273,6 +310,14 @@ func firstString(v any, keys ...string) string {
 }
 
 func firstNumber(v any, keys ...string) int64 {
+	return firstNumberDepth(v, 2, keys...)
+}
+
+func firstNumberDepth(v any, depth int, keys ...string) int64 {
+	if depth < 0 {
+		return 0
+	}
+
 	switch value := v.(type) {
 	case map[string]any:
 		for _, key := range keys {
@@ -293,14 +338,20 @@ func firstNumber(v any, keys ...string) int64 {
 				}
 			}
 		}
+		if depth == 0 {
+			return 0
+		}
 		for _, child := range value {
-			if n := firstNumber(child, keys...); n > 0 {
+			if n := firstNumberDepth(child, depth-1, keys...); n > 0 {
 				return n
 			}
 		}
 	case []any:
+		if depth == 0 {
+			return 0
+		}
 		for _, child := range value {
-			if n := firstNumber(child, keys...); n > 0 {
+			if n := firstNumberDepth(child, depth-1, keys...); n > 0 {
 				return n
 			}
 		}
@@ -309,7 +360,7 @@ func firstNumber(v any, keys ...string) int64 {
 }
 
 func deepProjectDir(v any) string {
-	candidate := firstString(v, "projectDir", "projectDirectory", "cwd", "path", "workspace", "directory")
+	candidate := firstStringDepth(v, 4, "projectDir", "projectDirectory", "cwd", "path", "workspace", "directory")
 	if filepath.IsAbs(candidate) {
 		return candidate
 	}

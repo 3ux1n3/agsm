@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/3ux1n3/agsm/internal/config"
 )
@@ -51,15 +50,6 @@ func (s *Store) SetCustomName(key, value string) error {
 		s.data.CustomNames[key] = value
 	}
 	return s.save()
-}
-
-func (s *Store) Keys() []string {
-	keys := make([]string, 0, len(s.data.CustomNames))
-	for key := range s.data.CustomNames {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func (s *Store) load() error {

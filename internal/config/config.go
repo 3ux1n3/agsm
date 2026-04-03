@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -73,7 +74,7 @@ func Load(path string) (Config, error) {
 
 func ConfigDir() (string, error) {
 	if override := os.Getenv("AGSM_CONFIG_HOME"); override != "" {
-		return filepath.Join(override, appName), nil
+		return override, nil
 	}
 
 	base, err := os.UserConfigDir()
@@ -104,12 +105,26 @@ func EnsureConfigDir() (string, error) {
 
 func applyDefaults(cfg *Config) {
 	defaults := Default()
+	cfg.SortBy = strings.ToLower(strings.TrimSpace(cfg.SortBy))
 	if cfg.SortBy == "" {
 		cfg.SortBy = defaults.SortBy
 	}
+	switch cfg.SortBy {
+	case "last_active", "name", "agent":
+	default:
+		cfg.SortBy = defaults.SortBy
+	}
+
+	cfg.SortOrder = strings.ToLower(strings.TrimSpace(cfg.SortOrder))
 	if cfg.SortOrder == "" {
 		cfg.SortOrder = defaults.SortOrder
 	}
+	switch cfg.SortOrder {
+	case "asc", "desc":
+	default:
+		cfg.SortOrder = defaults.SortOrder
+	}
+
 	if cfg.UI.ColorScheme == "" {
 		cfg.UI.ColorScheme = defaults.UI.ColorScheme
 	}

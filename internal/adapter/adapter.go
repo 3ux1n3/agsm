@@ -10,7 +10,7 @@ type AgentAdapter interface {
 	Name() string
 	Discover() ([]session.Session, error)
 	ResumeCommand(s session.Session) *exec.Cmd
-	NewCommand(dir string) *exec.Cmd
+	NewCommand(dir, prompt string) *exec.Cmd
 	DeleteSession(s session.Session) error
 	IsInstalled() bool
 }

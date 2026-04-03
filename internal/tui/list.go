@@ -11,10 +11,6 @@ import (
 	"github.com/3ux1n3/agsm/internal/session"
 )
 
-func renderList(width int, st styles, items []session.Session, selected int) string {
-	return renderListWindow(width, 0, st, items, selected, 0)
-}
-
 func renderListWindow(width, height int, st styles, items []session.Session, selected, offset int) string {
 	return renderCompactListWindow(width, height, st, items, selected, offset, true)
 }
@@ -106,7 +102,19 @@ func truncate(v string, width int) string {
 	if width <= 1 {
 		return ""
 	}
-	return v[:max(0, width-1)] + "…"
+
+	targetWidth := width - 1
+	currentWidth := 0
+	var out strings.Builder
+	for _, r := range v {
+		runeWidth := lipgloss.Width(string(r))
+		if currentWidth+runeWidth > targetWidth {
+			break
+		}
+		out.WriteRune(r)
+		currentWidth += runeWidth
+	}
+	return out.String() + "…"
 }
 
 func shortenHome(path string) string {
@@ -163,20 +171,6 @@ func sameDay(a, b time.Time) bool {
 	ay, am, ad := a.Date()
 	by, bm, bd := b.Date()
 	return ay == by && am == bm && ad == bd
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func fillVertical(content string, height int) string {

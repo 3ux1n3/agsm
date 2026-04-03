@@ -3,6 +3,7 @@ package registry
 import (
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/sahilm/fuzzy"
 
@@ -16,6 +17,7 @@ type Registry struct {
 	metadata  *metadata.Store
 	sortBy    string
 	sortOrder string
+	mu        sync.RWMutex
 	items     []session.Session
 }
 
@@ -42,11 +44,16 @@ func (r *Registry) Refresh() ([]session.Session, error) {
 	}
 
 	r.sort(all)
+	r.mu.Lock()
 	r.items = all
+	r.mu.Unlock()
 	return r.items, nil
 }
 
 func (r *Registry) Items() []session.Session {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	items := make([]session.Session, len(r.items))
 	copy(items, r.items)
 	return items
@@ -56,11 +63,13 @@ func (r *Registry) Rename(s session.Session, name string) error {
 	if err := r.metadata.SetCustomName(s.MetadataKey(), strings.TrimSpace(name)); err != nil {
 		return err
 	}
+	r.mu.Lock()
 	for i := range r.items {
 		if r.items[i].MetadataKey() == s.MetadataKey() {
 			r.items[i].CustomName = strings.TrimSpace(name)
 		}
 	}
+	r.mu.Unlock()
 	return nil
 }
 
@@ -86,20 +95,28 @@ func (r *Registry) AdapterFor(agent string) adapter.AgentAdapter {
 	return nil
 }
 
+func (r *Registry) DefaultAdapter() adapter.AgentAdapter {
+	if len(r.adapters) == 0 {
+		return nil
+	}
+	return r.adapters[0]
+}
+
 func (r *Registry) Filter(query string) []session.Session {
+	items := r.Items()
 	if strings.TrimSpace(query) == "" {
-		return r.Items()
+		return items
 	}
 
-	targets := make([]string, 0, len(r.items))
-	for _, item := range r.items {
+	targets := make([]string, 0, len(items))
+	for _, item := range items {
 		targets = append(targets, strings.Join([]string{item.DisplayName(), item.ProjectDir, item.Agent}, " | "))
 	}
 
 	matches := fuzzy.Find(strings.TrimSpace(query), targets)
 	filtered := make([]session.Session, 0, len(matches))
 	for _, match := range matches {
-		filtered = append(filtered, r.items[match.Index])
+		filtered = append(filtered, items[match.Index])
 	}
 	return filtered
 }

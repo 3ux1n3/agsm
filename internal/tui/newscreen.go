@@ -12,7 +12,7 @@ func newDirectoryInput() textinput.Model {
 
 func newOptionalNameInput() textinput.Model {
 	input := textinput.New()
-	input.Prompt = "Session Name: "
+	input.Prompt = "Initial Prompt: "
 	input.Placeholder = "optional"
 	input.CharLimit = 120
 	return input
