@@ -1,9 +1,13 @@
 package adapter
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"github.com/3ux1n3/agsm/internal/session"
 )
@@ -91,6 +95,65 @@ func TestClaudeDeleteSessionRemovesFile(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected file to be removed, stat err=%v", err)
+	}
+}
+
+func TestClaudeDiscoverUsesTranscriptTimestampOverModTime(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "session.jsonl")
+	content := "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello\"},\"cwd\":\"/tmp/work\",\"sessionId\":\"sess-1\",\"timestamp\":\"2026-04-01T10:00:00Z\"}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	modTime := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, modTime, modTime); err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewClaudeAdapter(root)
+	items, err := a.Discover()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	want := time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC)
+	if !items[0].LastActive.Equal(want) {
+		t.Fatalf("expected transcript timestamp %v, got %v", want, items[0].LastActive)
+	}
+}
+
+func TestClaudeDiscoverHandlesLargeJSONLRecord(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "session.jsonl")
+	largePrompt := strings.Repeat("a", 3*1024*1024)
+	content := fmt.Sprintf("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":%q},\"cwd\":\"/tmp/work\",\"sessionId\":\"sess-1\",\"timestamp\":\"2026-04-03T05:13:48Z\"}\n", largePrompt)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewClaudeAdapter(root)
+	items, err := a.Discover()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].ID != "sess-1" {
+		t.Fatalf("unexpected session: %#v", items[0])
+	}
+}
+
+func TestCleanClaudePromptPreservesUTF8(t *testing.T) {
+	prompt := strings.Repeat("你", 81)
+	got := cleanClaudePrompt(prompt)
+	if !utf8.ValidString(got) {
+		t.Fatalf("expected valid UTF-8, got %q", got)
+	}
+	if len([]rune(got)) != 80 {
+		t.Fatalf("expected 80 runes, got %d", len([]rune(got)))
 	}
 }
 

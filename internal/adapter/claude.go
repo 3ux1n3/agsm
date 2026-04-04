@@ -2,8 +2,10 @@ package adapter
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -148,22 +150,25 @@ func (a *ClaudeAdapter) parseSession(path string, modTime time.Time) (session.Se
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+	reader := bufio.NewReader(file)
 
 	id := ""
 	projectDir := ""
 	name := ""
-	lastActive := modTime
+	lastActive := time.Time{}
+	seenTimestamp := false
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	for {
+		line, err := readJSONLRecord(reader)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return session.Session{}, err
 		}
 
 		var record claudeRecord
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
+		if err := json.Unmarshal(line, &record); err != nil {
 			continue
 		}
 		if record.SessionID != "" {
@@ -172,8 +177,11 @@ func (a *ClaudeAdapter) parseSession(path string, modTime time.Time) (session.Se
 		if record.Cwd != "" {
 			projectDir = record.Cwd
 		}
-		if ts, ok := parseTime(record.Timestamp); ok && ts.After(lastActive) {
-			lastActive = ts
+		if ts, ok := parseTime(record.Timestamp); ok {
+			if !seenTimestamp || ts.After(lastActive) {
+				lastActive = ts
+			}
+			seenTimestamp = true
 		}
 		if slug := strings.TrimSpace(record.Slug); slug != "" {
 			name = slug
@@ -184,8 +192,8 @@ func (a *ClaudeAdapter) parseSession(path string, modTime time.Time) (session.Se
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return session.Session{}, err
+	if !seenTimestamp {
+		lastActive = modTime
 	}
 
 	if id == "" {
@@ -239,10 +247,36 @@ func cleanClaudePrompt(v string) string {
 		return ""
 	}
 	v = strings.Join(strings.Fields(v), " ")
-	if len(v) > 80 {
-		v = strings.TrimSpace(v[:80])
+	if len([]rune(v)) > 80 {
+		v = strings.TrimSpace(string([]rune(v)[:80]))
 	}
 	return v
+}
+
+func readJSONLRecord(r *bufio.Reader) ([]byte, error) {
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				if len(line) == 0 {
+					return nil, io.EOF
+				}
+			} else {
+				return nil, err
+			}
+		}
+
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			if err == io.EOF {
+				return nil, io.EOF
+			}
+			continue
+		}
+		out := make([]byte, len(trimmed))
+		copy(out, trimmed)
+		return out, nil
+	}
 }
 
 func shortSessionID(id string) string {
