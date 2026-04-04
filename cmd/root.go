@@ -23,6 +23,9 @@ func Run() error {
 	if cfg.Agents.OpenCode.Enabled {
 		adapters = append(adapters, adapter.NewOpenCodeAdapter(cfg.Agents.OpenCode.SessionPath))
 	}
+	if cfg.Agents.Claude.Enabled {
+		adapters = append(adapters, adapter.NewClaudeAdapter(cfg.Agents.Claude.SessionPath))
+	}
 
 	reg := registry.New(adapters, metaStore, cfg.SortBy, cfg.SortOrder)
 

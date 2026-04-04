@@ -17,9 +17,11 @@ type fakeAdapter struct {
 func (f fakeAdapter) Name() string                              { return "opencode" }
 func (f fakeAdapter) Discover() ([]session.Session, error)      { return f.items, nil }
 func (f fakeAdapter) ResumeCommand(s session.Session) *exec.Cmd { return exec.Command("true") }
-func (f fakeAdapter) NewCommand(dir, prompt string) *exec.Cmd   { return exec.Command("true") }
-func (f fakeAdapter) DeleteSession(s session.Session) error     { return nil }
-func (f fakeAdapter) IsInstalled() bool                         { return true }
+func (f fakeAdapter) NewCommand(opts adapter.NewSessionOptions) *exec.Cmd {
+	return exec.Command("true")
+}
+func (f fakeAdapter) DeleteSession(s session.Session) error { return nil }
+func (f fakeAdapter) IsInstalled() bool                     { return true }
 
 func TestRegistryRefreshSortAndFilter(t *testing.T) {
 	meta, err := metadata.NewStore(t.TempDir() + "/metadata.json")

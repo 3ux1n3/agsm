@@ -20,6 +20,7 @@ type Config struct {
 
 type Agents struct {
 	OpenCode Agent `toml:"opencode"`
+	Claude   Agent `toml:"claude"`
 }
 
 type Agent struct {
@@ -38,6 +39,7 @@ func Default() Config {
 		SortOrder: "desc",
 		Agents: Agents{
 			OpenCode: Agent{Enabled: true},
+			Claude:   Agent{Enabled: false},
 		},
 		UI: UI{
 			NerdFonts:   false,

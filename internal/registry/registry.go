@@ -102,6 +102,10 @@ func (r *Registry) DefaultAdapter() adapter.AgentAdapter {
 	return r.adapters[0]
 }
 
+func (r *Registry) AdapterCount() int {
+	return len(r.adapters)
+}
+
 func (r *Registry) Filter(query string) []session.Session {
 	items := r.Items()
 	if strings.TrimSpace(query) == "" {

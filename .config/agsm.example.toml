@@ -5,6 +5,10 @@ sort_order = "desc"
 enabled = true
 # session_path = "/Users/you/.local/share/opencode/storage/session"
 
+[agents.claude]
+enabled = false
+# session_path = "/Users/you/.claude/projects"
+
 [ui]
 nerd_fonts = false
 color_scheme = "auto"

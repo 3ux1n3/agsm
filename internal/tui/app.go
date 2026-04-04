@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/3ux1n3/agsm/internal/adapter"
 	"github.com/3ux1n3/agsm/internal/config"
 	"github.com/3ux1n3/agsm/internal/registry"
 	"github.com/3ux1n3/agsm/internal/session"
@@ -50,6 +51,7 @@ type app struct {
 	renameInput textinput.Model
 	dirInput    textinput.Model
 	nameInput   textinput.Model
+	promptInput textinput.Model
 	newField    int
 	status      string
 	err         error
@@ -62,7 +64,8 @@ func NewApp(cfg config.Config, registry *registry.Registry) *app {
 	searchInput := newSearchInput()
 	renameInput := newRenameInput()
 	dirInput := newDirectoryInput()
-	nameInput := newOptionalNameInput()
+	nameInput := newSessionNameInput()
+	promptInput := newPromptInput()
 
 	return &app{
 		cfg:         cfg,
@@ -74,6 +77,7 @@ func NewApp(cfg config.Config, registry *registry.Registry) *app {
 		renameInput: renameInput,
 		dirInput:    dirInput,
 		nameInput:   nameInput,
+		promptInput: promptInput,
 		status:      "Press / to search, Enter to resume, q to quit.",
 	}
 }
@@ -174,6 +178,7 @@ func (a *app) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.newField = 0
 			a.dirInput.SetValue("")
 			a.nameInput.SetValue("")
+			a.promptInput.SetValue("")
 			a.focusNewField()
 			a.err = nil
 		case key.Matches(keyMsg, a.keys.Enter):
@@ -274,12 +279,11 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.closeOverlay()
 			return a, nil
 		case key.Matches(keyMsg, a.keys.Tab):
-			a.newField = (a.newField + 1) % 2
+			a.newField = (a.newField + 1) % a.newSessionFieldCount()
 			a.focusNewField()
 			return a, nil
 		case key.Matches(keyMsg, a.keys.Enter):
 			dir := strings.TrimSpace(a.dirInput.Value())
-			prompt := strings.TrimSpace(a.nameInput.Value())
 			if dir == "" {
 				a.err = fmt.Errorf("directory is required")
 				return a, nil
@@ -295,23 +299,19 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 
-			adapter := a.registry.DefaultAdapter()
-			if current, ok := a.current(); ok {
-				if currentAdapter := a.registry.AdapterFor(current.Agent); currentAdapter != nil {
-					adapter = currentAdapter
-				}
-			}
-			if adapter == nil {
+			selectedAdapter := a.newSessionAdapter()
+			if selectedAdapter == nil {
 				a.err = fmt.Errorf("no agent adapter is configured")
 				return a, nil
 			}
 
-			cmd := adapter.NewCommand(resolved, prompt)
-			if prompt != "" {
-				a.status = "Launching new " + strings.Title(adapter.Name()) + " session with prompt"
-			} else {
-				a.status = "Launching new " + strings.Title(adapter.Name()) + " session"
+			opts := adapter.NewSessionOptions{
+				Dir:    resolved,
+				Name:   strings.TrimSpace(a.nameInput.Value()),
+				Prompt: strings.TrimSpace(a.promptInput.Value()),
 			}
+			cmd := selectedAdapter.NewCommand(opts)
+			a.status = a.newSessionStatus(selectedAdapter, opts)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -325,9 +325,14 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.dirInput, cmd = a.dirInput.Update(msg)
 		return a, cmd
 	}
+	if a.newSessionUsesName() && a.newField == 1 {
+		var cmd tea.Cmd
+		a.nameInput, cmd = a.nameInput.Update(msg)
+		return a, cmd
+	}
 
 	var cmd tea.Cmd
-	a.nameInput, cmd = a.nameInput.Update(msg)
+	a.promptInput, cmd = a.promptInput.Update(msg)
 	return a, cmd
 }
 
@@ -343,7 +348,7 @@ func (a *app) renderBaseView() string {
 	titleBar := a.styles.titleBar.Width(contentWidth).Render(joinEdge(contentWidth, titleLeft, titleRight))
 
 	statsLine := strings.Join([]string{
-		statBlock(a.styles, "agent", "opencode"),
+		statBlock(a.styles, "agent", a.configuredAgentLabel()),
 		statBlock(a.styles, "shown", fmt.Sprintf("%d", len(a.items))),
 		statBlock(a.styles, "selected", a.selectedSummary()),
 		statBlock(a.styles, "refresh", formatRefreshTime(a.lastRefresh, now)),
@@ -400,7 +405,7 @@ func (a *app) renderDeleteModal() string {
 	current, _ := a.current()
 	body := []string{
 		a.styles.modalDanger.Render("Delete Session"),
-		a.styles.muted.Render("This removes the session from OpenCode storage."),
+		a.styles.muted.Render("This removes the session from local " + formatAgentName(current.Agent) + " storage."),
 		"",
 		a.styles.footerMeta.Render("Session: " + current.DisplayName()),
 		a.styles.footerMeta.Render("Folder:  " + shortenHome(current.ProjectDir)),
@@ -411,13 +416,17 @@ func (a *app) renderDeleteModal() string {
 }
 
 func (a *app) renderNewSessionModal() string {
+	agentName := formatAgentName(a.newSessionAgentName())
 	fields := []string{
-		a.styles.modalTitle.Render("New OpenCode Session"),
-		a.styles.muted.Render("Choose a working directory and optionally label the launch."),
+		a.styles.modalTitle.Render("New " + agentName + " Session"),
+		a.styles.muted.Render(a.newSessionHelpText()),
 		"",
 		a.dirInput.View(),
-		a.nameInput.View(),
 	}
+	if a.newSessionUsesName() {
+		fields = append(fields, a.nameInput.View())
+	}
+	fields = append(fields, a.promptInput.View())
 	if a.err != nil {
 		fields = append(fields, "", a.styles.errorText.Render(a.err.Error()))
 	}
@@ -521,10 +530,18 @@ func (a *app) focusNewField() {
 	if a.newField == 0 {
 		a.dirInput.Focus()
 		a.nameInput.Blur()
+		a.promptInput.Blur()
+		return
+	}
+	if a.newSessionUsesName() && a.newField == 1 {
+		a.dirInput.Blur()
+		a.nameInput.Focus()
+		a.promptInput.Blur()
 		return
 	}
 	a.dirInput.Blur()
-	a.nameInput.Focus()
+	a.nameInput.Blur()
+	a.promptInput.Focus()
 }
 
 func (a *app) hasOverlay() bool {
@@ -537,6 +554,79 @@ func (a *app) closeOverlay() {
 	a.renameInput.Blur()
 	a.dirInput.Blur()
 	a.nameInput.Blur()
+	a.promptInput.Blur()
+}
+
+func (a *app) newSessionAdapter() adapter.AgentAdapter {
+	adapter := a.registry.DefaultAdapter()
+	if current, ok := a.current(); ok {
+		if currentAdapter := a.registry.AdapterFor(current.Agent); currentAdapter != nil {
+			adapter = currentAdapter
+		}
+	}
+	return adapter
+}
+
+func (a *app) newSessionAgentName() string {
+	if adapter := a.newSessionAdapter(); adapter != nil {
+		return adapter.Name()
+	}
+	return "agent"
+}
+
+func (a *app) newSessionUsesName() bool {
+	return a.newSessionAgentName() == "claude"
+}
+
+func (a *app) newSessionFieldCount() int {
+	if a.newSessionUsesName() {
+		return 3
+	}
+	return 2
+}
+
+func (a *app) newSessionHelpText() string {
+	if a.newSessionUsesName() {
+		return "Choose a working directory, then optionally add a session name and initial prompt."
+	}
+	return "Choose a working directory and optionally add an initial prompt."
+}
+
+func (a *app) newSessionStatus(agent adapter.AgentAdapter, opts adapter.NewSessionOptions) string {
+	agentName := formatAgentName(agent.Name())
+	if strings.TrimSpace(opts.Name) != "" {
+		return "Launching new " + agentName + " session: " + strings.TrimSpace(opts.Name)
+	}
+	if strings.TrimSpace(opts.Prompt) != "" {
+		return "Launching new " + agentName + " session with prompt"
+	}
+	return "Launching new " + agentName + " session"
+}
+
+func (a *app) configuredAgentLabel() string {
+	if a.registry.AdapterCount() == 0 {
+		return "none"
+	}
+	if a.registry.AdapterCount() == 1 {
+		if adapter := a.registry.DefaultAdapter(); adapter != nil {
+			return formatAgentName(adapter.Name())
+		}
+	}
+	return "mixed"
+}
+
+func formatAgentName(name string) string {
+	switch strings.TrimSpace(strings.ToLower(name)) {
+	case "opencode":
+		return "OpenCode"
+	case "claude":
+		return "Claude"
+	default:
+		if name == "" {
+			return "Agent"
+		}
+		return strings.ToUpper(name[:1]) + name[1:]
+	}
 }
 
 func placeOverlay(width, height int, base, modal string) string {

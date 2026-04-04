@@ -155,13 +155,13 @@ func (a *OpenCodeAdapter) ResumeCommand(s session.Session) *exec.Cmd {
 	return cmd
 }
 
-func (a *OpenCodeAdapter) NewCommand(dir, prompt string) *exec.Cmd {
+func (a *OpenCodeAdapter) NewCommand(opts NewSessionOptions) *exec.Cmd {
 	args := []string{}
-	if prompt = strings.TrimSpace(prompt); prompt != "" {
+	if prompt := strings.TrimSpace(opts.Prompt); prompt != "" {
 		args = append(args, "--prompt", prompt)
 	}
 	cmd := exec.Command("opencode", args...)
-	cmd.Dir = dir
+	cmd.Dir = opts.Dir
 	return cmd
 }
 

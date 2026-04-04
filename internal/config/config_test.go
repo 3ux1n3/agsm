@@ -40,6 +40,26 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestLoadClaudeAgentConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	data := []byte("[agents.claude]\nenabled = true\nsession_path = \"/tmp/claude-projects\"\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.Agents.Claude.Enabled {
+		t.Fatal("expected claude agent to be enabled")
+	}
+	if cfg.Agents.Claude.SessionPath != "/tmp/claude-projects" {
+		t.Fatalf("unexpected claude session path: %s", cfg.Agents.Claude.SessionPath)
+	}
+}
+
 func TestConfigDirUsesOverrideAsIs(t *testing.T) {
 	override := filepath.Join(t.TempDir(), "agsm")
 	t.Setenv("AGSM_CONFIG_HOME", override)
