@@ -3,8 +3,8 @@
 AGSM is a terminal UI for discovering, browsing, and resuming coding-agent sessions from one place.
 
 Current public scope:
-- OpenCode support
-- unified session list across OpenCode storage
+- OpenCode and Claude Code support
+- unified session list across supported agent storage backends
 - resume, refresh, rename, delete, and new-session launch flow
 - adaptive terminal theming with a full-screen TUI
 
@@ -12,24 +12,26 @@ Current public scope:
 
 AGSM is early `v0.x` software.
 
-The current release focuses on OpenCode first. Claude Code and Codex support are planned, but not included yet.
+The current release supports OpenCode and Claude Code. Codex support is still planned, but not included yet.
 
 ## Features
 
-- Full-screen TUI for OpenCode sessions
+- Full-screen TUI for OpenCode and Claude Code sessions
 - Session discovery from both:
   - OpenCode JSON session storage
   - OpenCode SQLite-backed session storage
+  - Claude Code JSONL session storage
 - Search and quick navigation
-- Resume selected session in OpenCode
+- Resume selected session in its source agent CLI
 - Rename sessions with AGSM-managed metadata
 - Delete sessions from the UI
-- Start a new OpenCode session from a chosen directory
+- Start a new session from a chosen directory with an explicit agent picker
 
 ## Requirements
 
 - Go installed locally if building from source
-- `opencode` installed and available on `PATH`
+- `opencode` installed and available on `PATH` for OpenCode support
+- `claude` installed and available on `PATH` for Claude Code support
 - macOS or Linux
 
 ## Install
@@ -66,10 +68,16 @@ make test
 
 ## Configuration
 
-Runtime config lives in `~/.config/agsm/`.
+Runtime config follows `os.UserConfigDir()` for your platform.
 
-- config file: `~/.config/agsm/config.toml`
-- metadata file: `~/.config/agsm/metadata.json`
+- macOS:
+  - config file: `~/Library/Application Support/agsm/config.toml`
+  - metadata file: `~/Library/Application Support/agsm/metadata.json`
+- Linux:
+  - config file: `~/.config/agsm/config.toml`
+  - metadata file: `~/.config/agsm/metadata.json`
+
+You can override the config directory entirely with `AGSM_CONFIG_HOME`.
 
 This repository also includes a local `.config/` directory for project-owned examples and future development config.
 
@@ -81,6 +89,11 @@ sort_order = "desc"
 
 [agents.opencode]
 enabled = true
+# session_path = "/Users/you/.local/share/opencode/storage/session"
+
+[agents.claude]
+enabled = true
+# session_path = "/Users/you/.claude/projects"
 
 [ui]
 nerd_fonts = false
@@ -92,8 +105,10 @@ See `.config/agsm.example.toml` for the committed example file.
 ## Notes
 
 - OpenCode session discovery reads both legacy JSON storage and current DB-backed sessions.
+- Claude Code session discovery reads local JSONL session files from `~/.claude/projects` by default.
 - AGSM stores custom session names in its own metadata file instead of modifying OpenCode session data.
-- AGSM currently targets OpenCode only.
+- New session creation includes an explicit agent selector in the modal.
+- Claude session deletion currently removes the discovered local session file only.
 
 ## Keybindings
 
@@ -106,6 +121,12 @@ See `.config/agsm.example.toml` for the committed example file.
 - `Ctrl+D`: delete session
 - `Ctrl+L`: refresh
 - `q`: quit
+
+New session modal:
+
+- `Tab`: move between fields
+- `Up` / `Down`: change the selected agent when the agent field is focused
+- `Enter`: launch the session
 
 ## Development
 
@@ -127,7 +148,6 @@ make run
 - [ ] Add release automation with GoReleaser
 - [ ] Add tagged release workflow
 - [ ] Add Homebrew distribution
-- [ ] Add Claude Code adapter
 - [ ] Add Codex adapter
 - [ ] Add screenshots and demo GIF to README
 
