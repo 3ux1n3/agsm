@@ -49,3 +49,37 @@ func TestRegistryRefreshSortAndFilter(t *testing.T) {
 		t.Fatalf("unexpected filter result: %#v", filtered)
 	}
 }
+
+func TestRegistrySortHandlesEqualValues(t *testing.T) {
+	meta, err := metadata.NewStore(t.TempDir() + "/metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := time.Now()
+	items := []session.Session{
+		{ID: "2", Agent: "claude", Name: "same", LastActive: ts, FilePath: "/tmp/2"},
+		{ID: "1", Agent: "claude", Name: "same", LastActive: ts, FilePath: "/tmp/1"},
+	}
+
+	reg := New([]adapter.AgentAdapter{fakeAdapter{items: items}}, meta, "last_active", "desc")
+	got, err := reg.Refresh()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 items, got %#v", got)
+	}
+	if got[0].ID != "2" || got[1].ID != "1" {
+		t.Fatalf("expected deterministic order for equal values, got %#v", got)
+	}
+
+	reg = New([]adapter.AgentAdapter{fakeAdapter{items: items}}, meta, "name", "asc")
+	got, err = reg.Refresh()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].ID != "1" || got[1].ID != "2" {
+		t.Fatalf("expected name sort tiebreaker by id, got %#v", got)
+	}
+}

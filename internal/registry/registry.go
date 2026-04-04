@@ -128,18 +128,61 @@ func (r *Registry) Filter(query string) []session.Session {
 func (r *Registry) sort(items []session.Session) {
 	desc := strings.ToLower(r.sortOrder) != "asc"
 	sort.Slice(items, func(i, j int) bool {
-		var less bool
+		compare := func(left, right session.Session) int {
+			switch r.sortBy {
+			case "name":
+				leftName := strings.ToLower(left.DisplayName())
+				rightName := strings.ToLower(right.DisplayName())
+				if leftName < rightName {
+					return -1
+				}
+				if leftName > rightName {
+					return 1
+				}
+			case "agent":
+				if left.Agent < right.Agent {
+					return -1
+				}
+				if left.Agent > right.Agent {
+					return 1
+				}
+			default:
+				if left.LastActive.Before(right.LastActive) {
+					return -1
+				}
+				if left.LastActive.After(right.LastActive) {
+					return 1
+				}
+			}
+
+			if left.Agent < right.Agent {
+				return -1
+			}
+			if left.Agent > right.Agent {
+				return 1
+			}
+			if left.DisplayName() < right.DisplayName() {
+				return -1
+			}
+			if left.DisplayName() > right.DisplayName() {
+				return 1
+			}
+			if left.ID < right.ID {
+				return -1
+			}
+			if left.ID > right.ID {
+				return 1
+			}
+			return 0
+		}
+
+		cmp := compare(items[i], items[j])
 		switch r.sortBy {
-		case "name":
-			less = strings.ToLower(items[i].DisplayName()) < strings.ToLower(items[j].DisplayName())
-		case "agent":
-			less = items[i].Agent < items[j].Agent
 		default:
-			less = items[i].LastActive.Before(items[j].LastActive)
 		}
 		if desc {
-			return !less
+			return cmp > 0
 		}
-		return less
+		return cmp < 0
 	})
 }
