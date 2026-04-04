@@ -53,6 +53,7 @@ type app struct {
 	nameInput   textinput.Model
 	promptInput textinput.Model
 	newField    int
+	newAgent    string
 	status      string
 	err         error
 	searchQuery string
@@ -176,6 +177,7 @@ func (a *app) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(keyMsg, a.keys.New):
 			a.mode = modeNewSession
 			a.newField = 0
+			a.newAgent = a.defaultNewAgent()
 			a.dirInput.SetValue("")
 			a.nameInput.SetValue("")
 			a.promptInput.SetValue("")
@@ -282,6 +284,16 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.newField = (a.newField + 1) % a.newSessionFieldCount()
 			a.focusNewField()
 			return a, nil
+		case key.Matches(keyMsg, a.keys.Up):
+			if a.newField == 0 {
+				a.cycleNewAgent(-1)
+				return a, nil
+			}
+		case key.Matches(keyMsg, a.keys.Down):
+			if a.newField == 0 {
+				a.cycleNewAgent(1)
+				return a, nil
+			}
 		case key.Matches(keyMsg, a.keys.Enter):
 			dir := strings.TrimSpace(a.dirInput.Value())
 			if dir == "" {
@@ -321,11 +333,14 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if a.newField == 0 {
+		return a, nil
+	}
+	if a.newField == 1 {
 		var cmd tea.Cmd
 		a.dirInput, cmd = a.dirInput.Update(msg)
 		return a, cmd
 	}
-	if a.newSessionUsesName() && a.newField == 1 {
+	if a.newSessionUsesName() && a.newField == 2 {
 		var cmd tea.Cmd
 		a.nameInput, cmd = a.nameInput.Update(msg)
 		return a, cmd
@@ -421,6 +436,7 @@ func (a *app) renderNewSessionModal() string {
 		a.styles.modalTitle.Render("New " + agentName + " Session"),
 		a.styles.muted.Render(a.newSessionHelpText()),
 		"",
+		a.renderAgentField(),
 		a.dirInput.View(),
 	}
 	if a.newSessionUsesName() {
@@ -430,7 +446,7 @@ func (a *app) renderNewSessionModal() string {
 	if a.err != nil {
 		fields = append(fields, "", a.styles.errorText.Render(a.err.Error()))
 	}
-	fields = append(fields, "", a.styles.footerMeta.Render("Tab to switch fields • Enter to launch • Esc to cancel"))
+	fields = append(fields, "", a.styles.footerMeta.Render("Tab switches fields • Up/Down change agent • Enter launches • Esc cancels"))
 	return a.styles.modal.Width(68).Render(strings.Join(fields, "\n"))
 }
 
@@ -528,6 +544,12 @@ func (a *app) clampSelection() {
 
 func (a *app) focusNewField() {
 	if a.newField == 0 {
+		a.dirInput.Blur()
+		a.nameInput.Blur()
+		a.promptInput.Blur()
+		return
+	}
+	if a.newField == 1 {
 		a.dirInput.Focus()
 		a.nameInput.Blur()
 		a.promptInput.Blur()
@@ -558,13 +580,12 @@ func (a *app) closeOverlay() {
 }
 
 func (a *app) newSessionAdapter() adapter.AgentAdapter {
-	adapter := a.registry.DefaultAdapter()
-	if current, ok := a.current(); ok {
-		if currentAdapter := a.registry.AdapterFor(current.Agent); currentAdapter != nil {
-			adapter = currentAdapter
+	if selected := strings.TrimSpace(a.newAgent); selected != "" {
+		if adapter := a.registry.AdapterFor(selected); adapter != nil {
+			return adapter
 		}
 	}
-	return adapter
+	return a.registry.DefaultAdapter()
 }
 
 func (a *app) newSessionAgentName() string {
@@ -580,9 +601,9 @@ func (a *app) newSessionUsesName() bool {
 
 func (a *app) newSessionFieldCount() int {
 	if a.newSessionUsesName() {
-		return 3
+		return 4
 	}
-	return 2
+	return 3
 }
 
 func (a *app) newSessionHelpText() string {
@@ -613,6 +634,44 @@ func (a *app) configuredAgentLabel() string {
 		}
 	}
 	return "mixed"
+}
+
+func (a *app) defaultNewAgent() string {
+	if current, ok := a.current(); ok {
+		if a.registry.AdapterFor(current.Agent) != nil {
+			return current.Agent
+		}
+	}
+	if adapter := a.registry.DefaultAdapter(); adapter != nil {
+		return adapter.Name()
+	}
+	return ""
+}
+
+func (a *app) cycleNewAgent(delta int) {
+	names := a.registry.AdapterNames()
+	if len(names) == 0 {
+		a.newAgent = ""
+		return
+	}
+	index := 0
+	for i, name := range names {
+		if name == a.newAgent {
+			index = i
+			break
+		}
+	}
+	index = (index + delta + len(names)) % len(names)
+	a.newAgent = names[index]
+	a.focusNewField()
+}
+
+func (a *app) renderAgentField() string {
+	label := "Agent: " + formatAgentName(a.newSessionAgentName())
+	if a.newField == 0 {
+		return a.styles.selectedRow.Render(label)
+	}
+	return a.styles.row.Render(label)
 }
 
 func formatAgentName(name string) string {

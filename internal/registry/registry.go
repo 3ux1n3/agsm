@@ -106,6 +106,14 @@ func (r *Registry) AdapterCount() int {
 	return len(r.adapters)
 }
 
+func (r *Registry) AdapterNames() []string {
+	names := make([]string, 0, len(r.adapters))
+	for _, adapter := range r.adapters {
+		names = append(names, adapter.Name())
+	}
+	return names
+}
+
 func (r *Registry) Filter(query string) []session.Session {
 	items := r.Items()
 	if strings.TrimSpace(query) == "" {
