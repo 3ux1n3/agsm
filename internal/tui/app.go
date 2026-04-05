@@ -179,9 +179,9 @@ func (a *app) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.newField = 0
 			a.newAgent = a.defaultNewAgent()
 			a.dirInput.SetValue("")
+			a.dirInput.Focus()
 			a.nameInput.SetValue("")
 			a.promptInput.SetValue("")
-			a.focusNewField()
 			a.err = nil
 		case key.Matches(keyMsg, a.keys.Enter):
 			if current, ok := a.current(); ok {
@@ -284,13 +284,13 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.newField = (a.newField + 1) % a.newSessionFieldCount()
 			a.focusNewField()
 			return a, nil
-		case key.Matches(keyMsg, a.keys.Up):
-			if a.newField == 0 {
+		case key.Matches(keyMsg, a.keys.Left):
+			if a.registry.AdapterCount() > 1 {
 				a.cycleNewAgent(-1)
 				return a, nil
 			}
-		case key.Matches(keyMsg, a.keys.Down):
-			if a.newField == 0 {
+		case key.Matches(keyMsg, a.keys.Right):
+			if a.registry.AdapterCount() > 1 {
 				a.cycleNewAgent(1)
 				return a, nil
 			}
@@ -333,14 +333,11 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if a.newField == 0 {
-		return a, nil
-	}
-	if a.newField == 1 {
 		var cmd tea.Cmd
 		a.dirInput, cmd = a.dirInput.Update(msg)
 		return a, cmd
 	}
-	if a.newSessionUsesName() && a.newField == 2 {
+	if a.newSessionUsesName() && a.newField == 1 {
 		var cmd tea.Cmd
 		a.nameInput, cmd = a.nameInput.Update(msg)
 		return a, cmd
@@ -354,7 +351,10 @@ func (a *app) updateNewSession(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a *app) renderBaseView() string {
 	frameWidth := max(20, a.width)
 	frameHeight := max(8, a.height)
-	contentWidth := max(1, frameWidth-2)
+	// app.Padding(0,1) = 2 horizontal, frame border = 2 horizontal
+	frameStyleWidth := max(1, frameWidth-4)
+	// frame.Padding(0,1) = 2 horizontal → content area inside frame
+	contentWidth := max(1, frameStyleWidth-2)
 	availableHeight := max(1, frameHeight-2)
 	now := time.Now()
 
@@ -362,16 +362,16 @@ func (a *app) renderBaseView() string {
 	titleRight := a.styles.headerMeta.Render(strings.Join(a.headerMetaParts(now), "  •  ") + " ")
 	titleBar := a.styles.titleBar.Width(contentWidth).Render(joinEdge(contentWidth, titleLeft, titleRight))
 
-	statsLine := strings.Join([]string{
+	statsLine := " " + lipgloss.JoinHorizontal(lipgloss.Left,
 		statBlock(a.styles, "agent", a.configuredAgentLabel()),
 		statBlock(a.styles, "shown", fmt.Sprintf("%d", len(a.items))),
 		statBlock(a.styles, "selected", a.selectedSummary()),
 		statBlock(a.styles, "refresh", formatRefreshTime(a.lastRefresh, now)),
-	}, "  ")
+	)
 	if a.searchQuery != "" {
-		statsLine = joinEdge(contentWidth, " "+statsLine, a.styles.filterPill.Render("/ "+a.searchQuery+" "))
+		statsLine = joinEdge(contentWidth, statsLine, a.styles.filterPill.Render("/ "+a.searchQuery+" "))
 	} else {
-		statsLine = padRight(" "+statsLine, contentWidth)
+		statsLine = padRight(statsLine, contentWidth)
 	}
 	statBar := a.styles.statBar.Width(contentWidth).Render(statsLine)
 
@@ -383,7 +383,7 @@ func (a *app) renderBaseView() string {
 	listContent := renderListWindow(contentWidth, listHeight, a.styles, a.items, a.selected, a.listOffset)
 	view := lipgloss.JoinVertical(lipgloss.Left, titleBar, statBar, listContent, footer)
 	inner := fillVertical(view, availableHeight)
-	framed := a.styles.frame.Width(contentWidth).Height(availableHeight).Render(inner)
+	framed := a.styles.frame.Width(frameStyleWidth).Height(availableHeight).Render(inner)
 	return a.styles.app.Render(fillVertical(framed, frameHeight))
 }
 
@@ -408,8 +408,11 @@ func (a *app) renderRenameModal() string {
 		a.styles.modalTitle.Render("Rename Session"),
 		a.styles.muted.Render("Update the AGSM custom name for this session."),
 		"",
-		a.styles.footerMeta.Render("Current: " + current.DisplayName()),
-		a.renameInput.View(),
+		a.styles.modalSection.Render(strings.Join([]string{
+			a.styles.footerMeta.Render("Current"),
+			a.styles.rowTitle.Render(current.DisplayName()),
+		}, "\n")),
+		a.renderFocusedField(a.renameInput.View(), true),
 		"",
 		a.styles.footerMeta.Render("Enter to save • Esc to cancel"),
 	}
@@ -422,8 +425,11 @@ func (a *app) renderDeleteModal() string {
 		a.styles.modalDanger.Render("Delete Session"),
 		a.styles.muted.Render("This removes the session from local " + formatAgentName(current.Agent) + " storage."),
 		"",
-		a.styles.footerMeta.Render("Session: " + current.DisplayName()),
-		a.styles.footerMeta.Render("Folder:  " + shortenHome(current.ProjectDir)),
+		a.styles.modalSection.Render(strings.Join([]string{
+			a.styles.footerMeta.Render("Session"),
+			a.styles.rowTitle.Render(current.DisplayName()),
+			a.styles.footerMeta.Render("Folder  " + shortenHome(current.ProjectDir)),
+		}, "\n")),
 		"",
 		a.styles.footerMeta.Render("Press y to confirm • n or Esc to cancel"),
 	}
@@ -432,21 +438,31 @@ func (a *app) renderDeleteModal() string {
 
 func (a *app) renderNewSessionModal() string {
 	agentName := formatAgentName(a.newSessionAgentName())
+	agentBadge := renderAgentBadge(a.styles, a.newSessionAgentName(), " "+agentName+" ")
+
+	titleLine := a.styles.modalTitle.Render("New Session") + "  " + agentBadge
+	if a.registry.AdapterCount() > 1 {
+		titleLine += "  " + a.styles.muted.Render("← → switch")
+	}
+
 	fields := []string{
-		a.styles.modalTitle.Render("New " + agentName + " Session"),
+		titleLine,
 		a.styles.muted.Render(a.newSessionHelpText()),
 		"",
-		a.renderAgentField(),
-		a.dirInput.View(),
+		a.renderFocusedField(a.dirInput.View(), a.newField == 0),
 	}
 	if a.newSessionUsesName() {
-		fields = append(fields, a.nameInput.View())
+		fields = append(fields, a.renderFocusedField(a.nameInput.View(), a.newField == 1))
 	}
-	fields = append(fields, a.promptInput.View())
+	promptFieldIndex := 1
+	if a.newSessionUsesName() {
+		promptFieldIndex = 2
+	}
+	fields = append(fields, a.renderFocusedField(a.promptInput.View(), a.newField == promptFieldIndex))
 	if a.err != nil {
 		fields = append(fields, "", a.styles.errorText.Render(a.err.Error()))
 	}
-	fields = append(fields, "", a.styles.footerMeta.Render("Tab switches fields • Up/Down change agent • Enter launches • Esc cancels"))
+	fields = append(fields, "", a.styles.footerMeta.Render("Tab next field • Enter launch • Esc cancel"))
 	return a.styles.modal.Width(68).Render(strings.Join(fields, "\n"))
 }
 
@@ -460,7 +476,7 @@ func (a *app) renderSearchModal() string {
 		a.styles.modalTitle.Render("Jump To Session"),
 		a.styles.muted.Render("Filter by title, folder, or agent."),
 		"",
-		a.searchInput.View(),
+		a.renderFocusedField(a.searchInput.View(), true),
 		"",
 		results,
 		"",
@@ -470,22 +486,41 @@ func (a *app) renderSearchModal() string {
 }
 
 func (a *app) renderFooter(width int) string {
-	actions := truncate("[Enter] resume  [/] search  [Ctrl+N] new  [Ctrl+R] rename  [Ctrl+D] delete  [Ctrl+L] refresh  [q] quit", width)
+	st := a.styles
 
-	metaText := a.status
-	if a.err != nil {
-		metaText = a.err.Error()
-	} else if current, ok := a.current(); ok {
-		metaText = shortenHome(current.ProjectDir) + "  •  " + current.ID
-	}
-	meta := a.styles.footerMeta.Render(truncate(metaText, width))
-	if a.err != nil {
-		meta = a.styles.errorText.Render(truncate(metaText, width))
-	}
+	// Left: mode segment
+	modeLabel := " LIST "
 	if a.searchQuery != "" {
-		meta = meta + "\n" + a.styles.footerMeta.Render("Esc clears the current filter")
+		modeLabel = " FILTER "
 	}
-	return a.styles.footer.Width(width).Render(a.styles.footerMeta.Render(actions) + "\n" + meta)
+	mode := st.statusMode.Render(modeLabel)
+
+	// Middle: session info or status
+	var info string
+	if a.err != nil {
+		info = st.statusErr.Render(" " + a.err.Error() + " ")
+	} else if current, ok := a.current(); ok {
+		path := st.statusPath.Render(" " + shortenHome(current.ProjectDir) + " ")
+		id := st.statusText.Render(" " + truncate(current.ID, 12) + " ")
+		info = path + id
+	} else if a.status != "" {
+		info = st.statusText.Render(" " + a.status + " ")
+	}
+
+	// Right: key hints
+	keys := st.statusKey.Render("⏎") + st.statusText.Render(" resume  ") +
+		st.statusKey.Render("/") + st.statusText.Render(" search  ") +
+		st.statusKey.Render("n") + st.statusText.Render(" new  ") +
+		st.statusKey.Render("q") + st.statusText.Render(" quit")
+
+	// Compose: mode + info + fill + keys
+	leftWidth := lipgloss.Width(mode) + lipgloss.Width(info)
+	rightWidth := lipgloss.Width(keys)
+	fill := max(0, width-leftWidth-rightWidth)
+	filler := st.statusText.Render(strings.Repeat(" ", fill))
+
+	bar := mode + info + filler + keys
+	return st.statusBar.Width(width).Render(bar)
 }
 
 func joinEdge(width int, left, right string) string {
@@ -543,27 +578,21 @@ func (a *app) clampSelection() {
 }
 
 func (a *app) focusNewField() {
-	if a.newField == 0 {
-		a.dirInput.Blur()
-		a.nameInput.Blur()
-		a.promptInput.Blur()
-		return
-	}
-	if a.newField == 1 {
-		a.dirInput.Focus()
-		a.nameInput.Blur()
-		a.promptInput.Blur()
-		return
-	}
-	if a.newSessionUsesName() && a.newField == 1 {
-		a.dirInput.Blur()
-		a.nameInput.Focus()
-		a.promptInput.Blur()
-		return
-	}
 	a.dirInput.Blur()
 	a.nameInput.Blur()
-	a.promptInput.Focus()
+	a.promptInput.Blur()
+	switch a.newField {
+	case 0:
+		a.dirInput.Focus()
+	case 1:
+		if a.newSessionUsesName() {
+			a.nameInput.Focus()
+		} else {
+			a.promptInput.Focus()
+		}
+	case 2:
+		a.promptInput.Focus()
+	}
 }
 
 func (a *app) hasOverlay() bool {
@@ -601,9 +630,9 @@ func (a *app) newSessionUsesName() bool {
 
 func (a *app) newSessionFieldCount() int {
 	if a.newSessionUsesName() {
-		return 4
+		return 3
 	}
-	return 3
+	return 2
 }
 
 func (a *app) newSessionHelpText() string {
@@ -666,12 +695,11 @@ func (a *app) cycleNewAgent(delta int) {
 	a.focusNewField()
 }
 
-func (a *app) renderAgentField() string {
-	label := "Agent: " + formatAgentName(a.newSessionAgentName())
-	if a.newField == 0 {
-		return a.styles.selectedRow.Render(label)
+func (a *app) renderFocusedField(content string, focused bool) string {
+	if focused {
+		return a.styles.focusRing.Render(content)
 	}
-	return a.styles.row.Render(label)
+	return a.styles.modalSection.Render(content)
 }
 
 func formatAgentName(name string) string {
@@ -752,7 +780,8 @@ func statBlock(st styles, label, value string) string {
 	if strings.TrimSpace(value) == "" {
 		value = "-"
 	}
-	return st.statLabel.Render(strings.ToUpper(label)) + " " + st.statValue.Render(value)
+	content := st.statLabel.Render(strings.ToUpper(label)) + " " + st.statValue.Render(value)
+	return st.statBlock.Render(content)
 }
 
 func padRight(value string, width int) string {

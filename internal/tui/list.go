@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -56,43 +57,54 @@ func renderCompactListWindow(width, height int, st styles, items []session.Sessi
 func renderColumnHeader(width int, st styles) string {
 	indicatorWidth := 2
 	agentWidth := 10
-	updatedWidth := 10
-	titleWidth := max(16, width/3)
-	folderWidth := max(14, width-indicatorWidth-agentWidth-titleWidth-updatedWidth-3)
+	updatedWidth := 8
+	titleWidth := max(16, width*45/100)
+	projectWidth := max(10, width-indicatorWidth-agentWidth-titleWidth-updatedWidth-3)
 
 	indicator := lipgloss.NewStyle().Width(indicatorWidth).Render(" ")
 	agent := lipgloss.NewStyle().Width(agentWidth).Render("AGENT")
 	title := lipgloss.NewStyle().Width(titleWidth).Render("SESSION")
-	folder := lipgloss.NewStyle().Width(folderWidth).Render("FOLDER")
+	project := lipgloss.NewStyle().Width(projectWidth).Render("PROJECT")
 	updated := lipgloss.NewStyle().Width(updatedWidth).Align(lipgloss.Right).Render("UPDATED")
 
-	row := indicator + agent + " " + title + " " + folder + " " + updated
+	row := indicator + agent + " " + title + " " + project + " " + updated
 	return st.listHeader.Width(width).Render(row)
 }
 
 func renderCompactRow(width int, st styles, item session.Session, selected bool, now time.Time) string {
 	indicatorWidth := 2
 	agentWidth := 10
-	updatedWidth := 10
-	titleWidth := max(16, width/3)
-	folderWidth := max(14, width-indicatorWidth-agentWidth-titleWidth-updatedWidth-3)
+	updatedWidth := 8
+	titleWidth := max(16, width*45/100)
+	projectWidth := max(10, width-indicatorWidth-agentWidth-titleWidth-updatedWidth-3)
 
-	indicator := " "
+	indicator := st.rowMeta.Render("·")
 	if selected {
-		indicator = ">"
+		indicator = st.rowAccent.Render("▌")
 	}
 	indicatorCol := lipgloss.NewStyle().Width(indicatorWidth).Render(indicator)
 	agentText := strings.ToUpper(truncate(item.Agent, 8))
-	agentCol := lipgloss.NewStyle().Width(agentWidth).Render(st.agentBadge.Render(agentText))
+	agentCol := renderAgentBadge(st, item.Agent, agentText)
 	titleCol := lipgloss.NewStyle().Width(titleWidth).Render(st.rowTitle.Render(truncate(item.DisplayName(), titleWidth)))
-	folderCol := lipgloss.NewStyle().Width(folderWidth).Render(st.rowMeta.Render(truncate(shortenHome(item.ProjectDir), folderWidth)))
+	projectCol := lipgloss.NewStyle().Width(projectWidth).Render(st.rowMeta.Render(truncate(projectName(item.ProjectDir), projectWidth)))
 	updatedCol := lipgloss.NewStyle().Width(updatedWidth).Align(lipgloss.Right).Render(st.timeText.Render(formatSessionTime(item.LastActive, now)))
 
-	row := indicatorCol + agentCol + " " + titleCol + " " + folderCol + " " + updatedCol
+	row := indicatorCol + agentCol + " " + titleCol + " " + projectCol + " " + updatedCol
 	if selected {
 		return st.selectedRow.Width(width).Render(row)
 	}
 	return st.row.Width(width).Render(row)
+}
+
+func renderAgentBadge(st styles, agent, text string) string {
+	switch strings.ToLower(strings.TrimSpace(agent)) {
+	case "claude":
+		return st.agentClaude.Render(text)
+	case "opencode":
+		return st.agentOpen.Render(text)
+	default:
+		return st.agentBadge.Render(text)
+	}
 }
 
 func truncate(v string, width int) string {
@@ -115,6 +127,13 @@ func truncate(v string, width int) string {
 		currentWidth += runeWidth
 	}
 	return out.String() + "…"
+}
+
+func projectName(path string) string {
+	if path == "" {
+		return "-"
+	}
+	return filepath.Base(path)
 }
 
 func shortenHome(path string) string {

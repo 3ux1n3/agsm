@@ -5,6 +5,8 @@ import "github.com/charmbracelet/bubbles/key"
 type keyMap struct {
 	Up      key.Binding
 	Down    key.Binding
+	Left    key.Binding
+	Right   key.Binding
 	Search  key.Binding
 	Refresh key.Binding
 	Rename  key.Binding
@@ -20,6 +22,8 @@ func defaultKeys() keyMap {
 	return keyMap{
 		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("up", "move up")),
 		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("down", "move down")),
+		Left:    key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "previous")),
+		Right:   key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "next")),
 		Search:  key.NewBinding(key.WithKeys("/", "ctrl+f"), key.WithHelp("/", "search")),
 		Refresh: key.NewBinding(key.WithKeys("ctrl+l"), key.WithHelp("ctrl+l", "refresh")),
 		Rename:  key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "rename")),

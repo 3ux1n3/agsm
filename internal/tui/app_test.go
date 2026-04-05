@@ -53,13 +53,13 @@ func TestCycleNewAgentChangesModalAgent(t *testing.T) {
 func TestNewSessionFieldCountDependsOnSelectedAgent(t *testing.T) {
 	app := testApp(t)
 	app.newAgent = "opencode"
-	if got := app.newSessionFieldCount(); got != 3 {
-		t.Fatalf("expected 3 fields for opencode, got %d", got)
+	if got := app.newSessionFieldCount(); got != 2 {
+		t.Fatalf("expected 2 fields for opencode, got %d", got)
 	}
 
 	app.newAgent = "claude"
-	if got := app.newSessionFieldCount(); got != 4 {
-		t.Fatalf("expected 4 fields for claude, got %d", got)
+	if got := app.newSessionFieldCount(); got != 3 {
+		t.Fatalf("expected 3 fields for claude, got %d", got)
 	}
 }
 

@@ -7,5 +7,6 @@ func newSearchInput() textinput.Model {
 	input.Prompt = "> "
 	input.Placeholder = "title, folder, agent"
 	input.CharLimit = 256
+	styleInput(&input)
 	return input
 }
