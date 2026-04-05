@@ -511,6 +511,8 @@ func (a *app) renderFooter(width int) string {
 	keys := st.statusKey.Render("⏎") + st.statusText.Render(" resume  ") +
 		st.statusKey.Render("/") + st.statusText.Render(" search  ") +
 		st.statusKey.Render("n") + st.statusText.Render(" new  ") +
+		st.statusKey.Render("r") + st.statusText.Render(" rename  ") +
+		st.statusKey.Render("d") + st.statusText.Render(" delete  ") +
 		st.statusKey.Render("q") + st.statusText.Render(" quit")
 
 	// Compose: mode + info + fill + keys

@@ -2,6 +2,8 @@
 
 AGSM is a terminal UI for discovering, browsing, and resuming coding-agent sessions from one place.
 
+![AGSM screenshot](assets/screenshot.png)
+
 Current public scope:
 - OpenCode and Claude Code support
 - unified session list across supported agent storage backends
@@ -125,7 +127,7 @@ See `.config/agsm.example.toml` for the committed example file.
 New session modal:
 
 - `Tab`: move between fields
-- `Up` / `Down`: change the selected agent when the agent field is focused
+- `←` / `→`: switch agent
 - `Enter`: launch the session
 
 ## Development
@@ -149,7 +151,7 @@ make run
 - [ ] Add tagged release workflow
 - [ ] Add Homebrew distribution
 - [ ] Add Codex adapter
-- [ ] Add screenshots and demo GIF to README
+- [x] Add screenshots and demo GIF to README
 
 ## License
 
