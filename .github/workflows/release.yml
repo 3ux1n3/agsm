@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build release archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            STAGE_DIR="dist/agsm_${VERSION}_${GOOS}_${GOARCH}"
+            ARCHIVE="dist/agsm_${VERSION}_${GOOS}_${GOARCH}.tar.gz"
+
+            mkdir -p "${STAGE_DIR}"
+            GOOS="${GOOS}" GOARCH="${GOARCH}" go build \
+              -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "${STAGE_DIR}/agsm" \
+              ./main.go
+            tar -C "${STAGE_DIR}" -czf "${ARCHIVE}" agsm
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          shasum -a 256 *.tar.gz > checksums.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

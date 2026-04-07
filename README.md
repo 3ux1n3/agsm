@@ -31,12 +31,23 @@ The current release supports OpenCode and Claude Code. Codex support is still pl
 
 ## Requirements
 
-- Go installed locally if building from source
 - `opencode` installed and available on `PATH` for OpenCode support
 - `claude` installed and available on `PATH` for Claude Code support
 - macOS or Linux
 
 ## Install
+
+Homebrew distribution should live in a separate tap repository, not in this source repo.
+
+Planned install command once the tap exists:
+
+```bash
+brew install 3ux1n3/tap/agsm
+```
+
+This repo publishes tagged tarballs plus `checksums.txt` for that tap to consume.
+
+From source with Go:
 
 ```bash
 go install github.com/3ux1n3/agsm@latest
@@ -50,23 +61,33 @@ If installed with `go install`:
 agsm
 ```
 
+Show the build version:
+
+```bash
+agsm --version
+```
+
 From this repository:
 
 ```bash
 make run
 ```
 
-## Build
+## Releases
+
+Tagged releases are published by `.github/workflows/release.yml`.
+
+Create a release:
 
 ```bash
-make build
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-## Test
+Each release uploads:
 
-```bash
-make test
-```
+- macOS and Linux tarballs for `amd64` and `arm64`
+- `checksums.txt` for downstream packaging, including Homebrew tap formula updates
 
 ## Configuration
 
@@ -147,9 +168,6 @@ make run
 - [ ] Add `CONTRIBUTING.md`
 - [ ] Add issue templates
 - [ ] Add pull request template
-- [ ] Add release automation with GoReleaser
-- [ ] Add tagged release workflow
-- [ ] Add Homebrew distribution
 - [ ] Add Codex adapter
 - [x] Add screenshots and demo GIF to README
 
