@@ -37,15 +37,14 @@ The current release supports OpenCode and Claude Code. Codex support is still pl
 
 ## Install
 
-Homebrew distribution should live in a separate tap repository, not in this source repo.
-
-Planned install command once the tap exists:
+With Homebrew:
 
 ```bash
-brew install 3ux1n3/tap/agsm
+brew tap 3ux1n3/tap
+brew install agsm
 ```
 
-This repo publishes tagged tarballs plus `checksums.txt` for that tap to consume.
+This repo publishes tagged tarballs plus `checksums.txt` for the Homebrew tap to consume.
 
 From source with Go:
 
