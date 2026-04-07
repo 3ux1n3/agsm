@@ -44,13 +44,13 @@ brew tap 3ux1n3/tap
 brew install agsm
 ```
 
-This repo publishes tagged tarballs plus `checksums.txt` for the Homebrew tap to consume.
-
 From source with Go:
 
 ```bash
 go install github.com/3ux1n3/agsm@latest
 ```
+
+Or download a prebuilt binary from the GitHub Releases page.
 
 ## Run
 
@@ -71,22 +71,6 @@ From this repository:
 ```bash
 make run
 ```
-
-## Releases
-
-Tagged releases are published by `.github/workflows/release.yml`.
-
-Create a release:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Each release uploads:
-
-- macOS and Linux tarballs for `amd64` and `arm64`
-- `checksums.txt` for downstream packaging, including Homebrew tap formula updates
 
 ## Configuration
 
